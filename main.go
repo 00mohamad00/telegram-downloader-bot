@@ -5,8 +5,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/00mohamad00/telegram-downloader-bot/downloader"
-	"github.com/00mohamad00/telegram-downloader-bot/telegram"
+	"github.com/00mohamad00/telegram-downloader-bot/src/downloader"
+	"github.com/00mohamad00/telegram-downloader-bot/src/telegram"
 )
 
 func main() {

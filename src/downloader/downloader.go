@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/00mohamad00/telegram-downloader-bot/pkg/videoinfo"
+	"github.com/00mohamad00/telegram-downloader-bot/src/pkg/videoinfo"
 )
 
 type VideoDownloader struct {

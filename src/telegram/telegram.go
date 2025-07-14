@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/00mohamad00/telegram-downloader-bot/downloader"
-	"github.com/00mohamad00/telegram-downloader-bot/pkg/videoinfo"
+	"github.com/00mohamad00/telegram-downloader-bot/src/downloader"
+	"github.com/00mohamad00/telegram-downloader-bot/src/pkg/videoinfo"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
