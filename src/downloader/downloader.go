@@ -31,6 +31,15 @@ func NewVideoDownloader(downloadDir string, timeout time.Duration) *VideoDownloa
 }
 
 func (vd *VideoDownloader) DownloadVideo(url string) (string, error) {
+	videoInfo, err := vd.GetVideoInfo(url)
+	if err != nil {
+		return "", fmt.Errorf("failed to get video info: %w", err)
+	}
+	filePath := filepath.Join(vd.DownloadDir, videoInfo.Filename)
+	if _, err := os.Stat(filePath); err == nil {
+		return filePath, nil
+	}
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
@@ -48,9 +57,6 @@ func (vd *VideoDownloader) DownloadVideo(url string) (string, error) {
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("server returned status: %s", resp.Status)
 	}
-
-	filename := vd.generateFilename(url, resp.Header.Get("Content-Type"))
-	filePath := filepath.Join(vd.DownloadDir, filename)
 
 	file, err := os.Create(filePath)
 	if err != nil {
