@@ -1,7 +1,9 @@
 package telegram
 
 import (
+	"fmt"
 	"log"
+	"os"
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -16,21 +18,38 @@ Just send me a video URL and I'll download it for you!
 
 Use /help for more information.`
 
-	helpText = `🎬 Video Downloader Bot Commands:
+	unknownCommandText = `Unknown command. Use /help to see available commands.`
+)
+
+func getHelpText() string {
+	isLocalServer := os.Getenv("TELEGRAM_API_URL") != ""
+
+	var apiInfo, sizeLimit string
+	if isLocalServer {
+		apiInfo = "🔧 API: TDLib Local Server (Enhanced)"
+		sizeLimit = "📏 Upload limit: 2000MB"
+	} else {
+		apiInfo = "🔧 API: Official Telegram API"
+		sizeLimit = "📏 Upload limit: 50MB"
+	}
+
+	return fmt.Sprintf(`🎬 Video Downloader Bot Commands:
 
 /start - Start the bot
 /help - Show this help message
 /info <url> - Get video information without downloading
+/status - Show current API status and limits
 
 📝 Usage:
 • Send a direct video URL to download
 • Supported formats: MP4, WebM, AVI, MOV, WMV, FLV, MKV
 • Files are saved to the downloads directory
 
-⚠️ Note: Only direct video URLs are supported. YouTube and other streaming platforms may not work.`
+%s
+%s
 
-	unknownCommandText = `Unknown command. Use /help to see available commands.`
-)
+⚠️ Note: Only direct video URLs are supported. YouTube and other streaming platforms may not work.`, apiInfo, sizeLimit)
+}
 
 func (t *TelegramBot) handleCommand(message *tgbotapi.Message) {
 	chatID := message.Chat.ID
@@ -45,7 +64,14 @@ func (t *TelegramBot) handleCommand(message *tgbotapi.Message) {
 		}
 
 	case "/help":
-		msg := tgbotapi.NewMessage(chatID, helpText)
+		msg := tgbotapi.NewMessage(chatID, getHelpText())
+		if _, err := t.Bot.Send(msg); err != nil {
+			log.Printf("Error sending message: %v", err)
+		}
+
+	case "/status":
+		statusText := t.getStatusText()
+		msg := tgbotapi.NewMessage(chatID, statusText)
 		if _, err := t.Bot.Send(msg); err != nil {
 			log.Printf("Error sending message: %v", err)
 		}

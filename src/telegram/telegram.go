@@ -21,7 +21,22 @@ func NewTelegramBotOrPanic(
 	debug bool,
 	videoDownloader *downloader.VideoDownloader,
 ) *TelegramBot {
-	bot, err := tgbotapi.NewBotAPI(botToken)
+	// Check if custom API URL is set (for local TDLib server)
+	apiURL := os.Getenv("TELEGRAM_API_URL")
+
+	var bot *tgbotapi.BotAPI
+	var err error
+
+	if apiURL != "" {
+		// Use custom API URL (TDLib local server)
+		bot, err = tgbotapi.NewBotAPIWithAPIEndpoint(botToken, apiURL+"/bot%s/%s")
+		log.Printf("Using custom Telegram API endpoint: %s", apiURL)
+	} else {
+		// Use official Telegram API
+		bot, err = tgbotapi.NewBotAPI(botToken)
+		log.Printf("Using official Telegram API endpoint")
+	}
+
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -129,7 +144,19 @@ func (t *TelegramBot) handleVideoInfo(chatID int64, url string) {
 }
 
 func (t *TelegramBot) uploadVideoToTelegram(chatID int64, filePath string, videoInfo *videoinfo.VideoInfo) {
-	const maxFileSize = 50 * 1024 * 1024 // 50MB in bytes
+	// Check if we're using local TDLib server for enhanced limits
+	isLocalServer := os.Getenv("TELEGRAM_API_URL") != ""
+
+	var maxFileSize int64
+	var fileSizeLimit string
+
+	if isLocalServer {
+		maxFileSize = 2000 * 1024 * 1024 // 2000MB for TDLib local server
+		fileSizeLimit = "2000MB"
+	} else {
+		maxFileSize = 50 * 1024 * 1024 // 50MB for official API
+		fileSizeLimit = "50MB"
+	}
 
 	fileInfo, err := os.Stat(filePath)
 	if err != nil {
@@ -145,8 +172,8 @@ func (t *TelegramBot) uploadVideoToTelegram(chatID int64, filePath string, video
 	if fileSize > maxFileSize {
 		log.Printf("File too large for Telegram upload: %d bytes (max: %d bytes)", fileSize, maxFileSize)
 
-		errorMsg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ File too large for Telegram upload!\n\n📊 File size: %s\n📏 Telegram limit: 50MB\n\n📁 Video saved locally to: %s",
-			videoInfo.FormatSize(), filePath))
+		errorMsg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ File too large for Telegram upload!\n\n📊 File size: %s\n📏 Current limit: %s\n\n📁 Video saved locally to: %s\n\n💡 Tip: Use TDLib local server for 2000MB limit!",
+			videoInfo.FormatSize(), fileSizeLimit, filePath))
 		if _, err := t.Bot.Send(errorMsg); err != nil {
 			log.Printf("Error sending file size error message: %v", err)
 		}
@@ -158,10 +185,21 @@ func (t *TelegramBot) uploadVideoToTelegram(chatID int64, filePath string, video
 		log.Printf("Error sending uploading message: %v", err)
 	}
 
-	video := tgbotapi.NewVideo(chatID, tgbotapi.FilePath(filePath))
+	// For local TDLib server, we can use file:// URL for more efficient uploads
+	var video tgbotapi.VideoConfig
+	if isLocalServer {
+		// Use file:// URI for local TDLib server (more efficient)
+		fileURI := "file://" + filePath
+		video = tgbotapi.NewVideo(chatID, tgbotapi.FileURL(fileURI))
+		log.Printf("Using local file URI for TDLib: %s", fileURI)
+	} else {
+		// Use file path for official API
+		video = tgbotapi.NewVideo(chatID, tgbotapi.FilePath(filePath))
+	}
 
-	caption := fmt.Sprintf("✅ Video uploaded successfully!\n\n📁 Filename: %s\n💾 Size: %s",
-		videoInfo.Filename, videoInfo.FormatSize())
+	caption := fmt.Sprintf("✅ Video uploaded successfully!\n\n📁 Filename: %s\n💾 Size: %s\n🔧 API: %s",
+		videoInfo.Filename, videoInfo.FormatSize(),
+		map[bool]string{true: "TDLib Local", false: "Official"}[isLocalServer])
 	video.Caption = caption
 
 	_, err = t.Bot.Send(video)
@@ -177,9 +215,46 @@ func (t *TelegramBot) uploadVideoToTelegram(chatID int64, filePath string, video
 
 	log.Printf("Video uploaded successfully to Telegram: %s", filePath)
 
+	// Only delete file if upload was successful
 	if err := os.Remove(filePath); err != nil {
 		log.Printf("Warning: Could not delete local file %s: %v", filePath, err)
 	} else {
 		log.Printf("Local file deleted: %s", filePath)
 	}
+}
+
+func (t *TelegramBot) getStatusText() string {
+	isLocalServer := os.Getenv("TELEGRAM_API_URL") != ""
+	apiURL := os.Getenv("TELEGRAM_API_URL")
+
+	var statusText string
+	if isLocalServer {
+		statusText = fmt.Sprintf(`🤖 Bot Status Information:
+
+🔧 API Type: TDLib Local Server
+🌐 Endpoint: %s
+📏 Upload Limit: 2000MB
+📥 Download Limit: Unlimited
+⚡ Local File Support: ✅ Enabled
+🔒 Enhanced Features: ✅ Available
+
+✨ Benefits:
+• Much larger file uploads (2000MB vs 50MB)
+• Faster uploads using local file paths
+• No download size restrictions
+• Better performance and control`, apiURL)
+	} else {
+		statusText = `🤖 Bot Status Information:
+
+🔧 API Type: Official Telegram API
+🌐 Endpoint: api.telegram.org
+📏 Upload Limit: 50MB
+📥 Download Limit: Standard
+⚡ Local File Support: ❌ Not Available
+🔒 Enhanced Features: ❌ Not Available
+
+💡 Tip: Set up TDLib local server for enhanced features!`
+	}
+
+	return statusText
 }
