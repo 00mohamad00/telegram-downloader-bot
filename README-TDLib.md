@@ -7,10 +7,10 @@ This guide explains how to set up and use the TDLib Telegram Bot API server with
 When using the TDLib local server instead of the official Telegram API, you get:
 
 - **📏 Larger file uploads**: Up to 2000MB (instead of 50MB)
-- **📥 Unlimited downloads**: No size restrictions on downloads
-- **⚡ Faster uploads**: Using local file paths with `file://` URIs
-- **🔧 Better control**: Custom webhook configurations
-- **🚀 Enhanced performance**: Direct local communication
+- **📥 Unlimited downloads**: No size restrictions on downloads  
+- **⚡ Faster uploads**: TDLib server handles local files more efficiently than official API
+- **🔧 Better control**: Custom webhook configurations and enhanced features
+- **🚀 Enhanced performance**: Direct local communication with reduced latency
 
 ## 🛠️ Prerequisites
 

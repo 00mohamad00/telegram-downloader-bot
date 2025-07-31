@@ -185,16 +185,14 @@ func (t *TelegramBot) uploadVideoToTelegram(chatID int64, filePath string, video
 		log.Printf("Error sending uploading message: %v", err)
 	}
 
-	// For local TDLib server, we can use file:// URL for more efficient uploads
-	var video tgbotapi.VideoConfig
+	// Both TDLib and official API can use file paths
+	// TDLib server handles local files more efficiently internally
+	video := tgbotapi.NewVideo(chatID, tgbotapi.FilePath(filePath))
+
 	if isLocalServer {
-		// Use file:// URI for local TDLib server (more efficient)
-		fileURI := "file://" + filePath
-		video = tgbotapi.NewVideo(chatID, tgbotapi.FileURL(fileURI))
-		log.Printf("Using local file URI for TDLib: %s", fileURI)
+		log.Printf("Using TDLib local server for file: %s", filePath)
 	} else {
-		// Use file path for official API
-		video = tgbotapi.NewVideo(chatID, tgbotapi.FilePath(filePath))
+		log.Printf("Using official API for file: %s", filePath)
 	}
 
 	caption := fmt.Sprintf("✅ Video uploaded successfully!\n\n📁 Filename: %s\n💾 Size: %s\n🔧 API: %s",
