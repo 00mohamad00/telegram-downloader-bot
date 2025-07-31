@@ -15,8 +15,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o telegram-download
 # Final stage
 FROM alpine:latest
 
-# Install ca-certificates for HTTPS requests
-RUN apk --no-cache add ca-certificates tzdata
+# Install ca-certificates for HTTPS requests and ffmpeg for video metadata extraction
+RUN apk --no-cache add ca-certificates tzdata ffmpeg
 
 WORKDIR /app
 

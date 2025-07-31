@@ -1,11 +1,14 @@
 package downloader
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -67,6 +70,13 @@ func (vd *VideoDownloader) DownloadVideo(url string) (string, error) {
 	_, err = io.Copy(file, resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("failed to save video: %w", err)
+	}
+
+	// Extract video metadata after download
+	err = vd.extractVideoMetadata(filePath, videoInfo)
+	if err != nil {
+		fmt.Printf("Warning: Could not extract video metadata: %v\n", err)
+		// Don't fail the download, just continue without metadata
 	}
 
 	return filePath, nil
@@ -159,4 +169,59 @@ func (vd *VideoDownloader) GetVideoInfo(url string) (*videoinfo.VideoInfo, error
 		Size:        resp.ContentLength,
 		Filename:    vd.generateFilename(url, resp.Header.Get("Content-Type")),
 	}, nil
+}
+
+// FFProbeOutput represents the structure of ffprobe JSON output
+type FFProbeOutput struct {
+	Streams []struct {
+		CodecType string `json:"codec_type"`
+		Duration  string `json:"duration"`
+		Width     int    `json:"width"`
+		Height    int    `json:"height"`
+	} `json:"streams"`
+}
+
+// extractVideoMetadata uses ffprobe to extract video metadata
+func (vd *VideoDownloader) extractVideoMetadata(filePath string, videoInfo *videoinfo.VideoInfo) error {
+	// Check if ffprobe is available
+	if _, err := exec.LookPath("ffprobe"); err != nil {
+		return fmt.Errorf("ffprobe not found in PATH: %w", err)
+	}
+
+	// Run ffprobe to get video metadata
+	cmd := exec.Command("ffprobe",
+		"-v", "quiet",
+		"-print_format", "json",
+		"-show_streams",
+		"-select_streams", "v:0", // Select first video stream
+		filePath)
+
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("ffprobe failed: %w", err)
+	}
+
+	var probe FFProbeOutput
+	if err := json.Unmarshal(output, &probe); err != nil {
+		return fmt.Errorf("failed to parse ffprobe output: %w", err)
+	}
+
+	// Extract metadata from first video stream
+	if len(probe.Streams) > 0 {
+		stream := probe.Streams[0]
+
+		// Parse duration
+		if duration, err := strconv.ParseFloat(stream.Duration, 64); err == nil {
+			videoInfo.Duration = int(duration)
+		}
+
+		// Set dimensions
+		videoInfo.Width = stream.Width
+		videoInfo.Height = stream.Height
+
+		fmt.Printf("Extracted video metadata: %dx%d, %ds duration\n",
+			videoInfo.Width, videoInfo.Height, videoInfo.Duration)
+	}
+
+	return nil
 }

@@ -137,6 +137,14 @@ func (t *TelegramBot) handleVideoInfo(chatID int64, url string) {
 	infoText := fmt.Sprintf("📹 Video Information:\n\nURL: %s\nFilename: %s\nSize: %s\nContent Type: %s",
 		videoInfo.URL, videoInfo.Filename, videoInfo.FormatSize(), videoInfo.ContentType)
 
+	// Add metadata if available
+	if videoInfo.Duration > 0 {
+		infoText += fmt.Sprintf("\nDuration: %d seconds", videoInfo.Duration)
+	}
+	if videoInfo.Width > 0 && videoInfo.Height > 0 {
+		infoText += fmt.Sprintf("\nDimensions: %dx%d", videoInfo.Width, videoInfo.Height)
+	}
+
 	msg := tgbotapi.NewMessage(chatID, infoText)
 	if _, err := t.Bot.Send(msg); err != nil {
 		log.Printf("Error sending info message: %v", err)
@@ -189,6 +197,15 @@ func (t *TelegramBot) uploadVideoToTelegram(chatID int64, filePath string, video
 	// TDLib server handles local files more efficiently internally
 	video := tgbotapi.NewVideo(chatID, tgbotapi.FilePath(filePath))
 
+	// Set video metadata for better previews in Telegram
+	if videoInfo.Duration > 0 {
+		video.Duration = videoInfo.Duration
+		log.Printf("Setting video duration: %d seconds", videoInfo.Duration)
+	}
+	if videoInfo.Width > 0 && videoInfo.Height > 0 {
+		log.Printf("Video dimensions: %dx%d (metadata extracted)", videoInfo.Width, videoInfo.Height)
+	}
+
 	if isLocalServer {
 		log.Printf("Using TDLib local server for file: %s", filePath)
 	} else {
@@ -198,6 +215,14 @@ func (t *TelegramBot) uploadVideoToTelegram(chatID int64, filePath string, video
 	caption := fmt.Sprintf("✅ Video uploaded successfully!\n\n📁 Filename: %s\n💾 Size: %s\n🔧 API: %s",
 		videoInfo.Filename, videoInfo.FormatSize(),
 		map[bool]string{true: "TDLib Local", false: "Official"}[isLocalServer])
+
+	// Add metadata to caption if available
+	if videoInfo.Duration > 0 {
+		caption += fmt.Sprintf("\n⏱️ Duration: %d seconds", videoInfo.Duration)
+	}
+	if videoInfo.Width > 0 && videoInfo.Height > 0 {
+		caption += fmt.Sprintf("\n📐 Resolution: %dx%d", videoInfo.Width, videoInfo.Height)
+	}
 	video.Caption = caption
 
 	_, err = t.Bot.Send(video)

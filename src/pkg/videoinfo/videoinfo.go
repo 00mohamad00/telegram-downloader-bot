@@ -7,6 +7,9 @@ type VideoInfo struct {
 	ContentType string
 	Size        int64
 	Filename    string
+	Duration    int // Duration in seconds
+	Width       int // Video width in pixels
+	Height      int // Video height in pixels
 }
 
 // FormatSize returns the size of the video in a human-readable format
