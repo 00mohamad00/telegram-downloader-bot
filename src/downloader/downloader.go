@@ -33,19 +33,24 @@ func NewVideoDownloader(downloadDir string, timeout time.Duration) *VideoDownloa
 	}
 }
 
-func (vd *VideoDownloader) DownloadVideo(url string) (string, error) {
+func (vd *VideoDownloader) DownloadVideo(url string) (string, *videoinfo.VideoInfo, error) {
 	videoInfo, err := vd.GetVideoInfo(url)
 	if err != nil {
-		return "", fmt.Errorf("failed to get video info: %w", err)
+		return "", nil, fmt.Errorf("failed to get video info: %w", err)
 	}
 	filePath := filepath.Join(vd.DownloadDir, videoInfo.Filename)
 	if _, err := os.Stat(filePath); err == nil {
-		return filePath, nil
+		// File exists, extract metadata and return
+		err = vd.extractVideoMetadata(filePath, videoInfo)
+		if err != nil {
+			fmt.Printf("Warning: Could not extract video metadata from existing file: %v\n", err)
+		}
+		return filePath, videoInfo, nil
 	}
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return "", nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	// Add user agent to avoid blocking
@@ -53,23 +58,23 @@ func (vd *VideoDownloader) DownloadVideo(url string) (string, error) {
 
 	resp, err := vd.Client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to download video: %w", err)
+		return "", nil, fmt.Errorf("failed to download video: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("server returned status: %s", resp.Status)
+		return "", nil, fmt.Errorf("server returned status: %s", resp.Status)
 	}
 
 	file, err := os.Create(filePath)
 	if err != nil {
-		return "", fmt.Errorf("failed to create file: %w", err)
+		return "", nil, fmt.Errorf("failed to create file: %w", err)
 	}
 	defer file.Close()
 
 	_, err = io.Copy(file, resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to save video: %w", err)
+		return "", nil, fmt.Errorf("failed to save video: %w", err)
 	}
 
 	// Extract video metadata after download
@@ -79,7 +84,7 @@ func (vd *VideoDownloader) DownloadVideo(url string) (string, error) {
 		// Don't fail the download, just continue without metadata
 	}
 
-	return filePath, nil
+	return filePath, videoInfo, nil
 }
 
 func (vd *VideoDownloader) generateFilename(url, contentType string) string {

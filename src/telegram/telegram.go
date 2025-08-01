@@ -111,7 +111,7 @@ func (t *TelegramBot) handleVideoDownload(chatID int64, url string) {
 		log.Printf("Error sending info message: %v", err)
 	}
 
-	filePath, err := t.VideoDownloader.DownloadVideo(url)
+	filePath, updatedVideoInfo, err := t.VideoDownloader.DownloadVideo(url)
 	if err != nil {
 		errorMsg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error downloading video: %v", err))
 		if _, err := t.Bot.Send(errorMsg); err != nil {
@@ -120,8 +120,8 @@ func (t *TelegramBot) handleVideoDownload(chatID int64, url string) {
 		return
 	}
 
-	// Upload the video to Telegram
-	t.uploadVideoToTelegram(chatID, filePath, videoInfo)
+	// Upload the video to Telegram with updated metadata
+	t.uploadVideoToTelegram(chatID, filePath, updatedVideoInfo)
 }
 
 func (t *TelegramBot) handleVideoInfo(chatID int64, url string) {
@@ -136,14 +136,10 @@ func (t *TelegramBot) handleVideoInfo(chatID int64, url string) {
 
 	infoText := fmt.Sprintf("📹 Video Information:\n\nURL: %s\nFilename: %s\nSize: %s\nContent Type: %s",
 		videoInfo.URL, videoInfo.Filename, videoInfo.FormatSize(), videoInfo.ContentType)
-
-	// Add metadata if available
-	if videoInfo.Duration > 0 {
-		infoText += fmt.Sprintf("\nDuration: %d seconds", videoInfo.Duration)
-	}
-	if videoInfo.Width > 0 && videoInfo.Height > 0 {
-		infoText += fmt.Sprintf("\nDimensions: %dx%d", videoInfo.Width, videoInfo.Height)
-	}
+	
+	// Note: For /info command, we only show basic info without downloading
+	// Duration and dimensions are available after download
+	infoText += "\n\n💡 Use direct download to get duration and resolution metadata"
 
 	msg := tgbotapi.NewMessage(chatID, infoText)
 	if _, err := t.Bot.Send(msg); err != nil {
@@ -200,10 +196,15 @@ func (t *TelegramBot) uploadVideoToTelegram(chatID int64, filePath string, video
 	// Set video metadata for better previews in Telegram
 	if videoInfo.Duration > 0 {
 		video.Duration = videoInfo.Duration
-		log.Printf("Setting video duration: %d seconds", videoInfo.Duration)
+		log.Printf("✅ Setting video duration for Telegram: %d seconds", videoInfo.Duration)
+	} else {
+		log.Printf("⚠️ No duration metadata available")
 	}
+	
 	if videoInfo.Width > 0 && videoInfo.Height > 0 {
-		log.Printf("Video dimensions: %dx%d (metadata extracted)", videoInfo.Width, videoInfo.Height)
+		log.Printf("✅ Video dimensions extracted: %dx%d", videoInfo.Width, videoInfo.Height)
+	} else {
+		log.Printf("⚠️ No dimension metadata available")
 	}
 
 	if isLocalServer {
