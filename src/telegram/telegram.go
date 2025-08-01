@@ -136,7 +136,7 @@ func (t *TelegramBot) handleVideoInfo(chatID int64, url string) {
 
 	infoText := fmt.Sprintf("📹 Video Information:\n\nURL: %s\nFilename: %s\nSize: %s\nContent Type: %s",
 		videoInfo.URL, videoInfo.Filename, videoInfo.FormatSize(), videoInfo.ContentType)
-	
+
 	// Note: For /info command, we only show basic info without downloading
 	// Duration and dimensions are available after download
 	infoText += "\n\n💡 Use direct download to get duration and resolution metadata"
@@ -145,6 +145,42 @@ func (t *TelegramBot) handleVideoInfo(chatID int64, url string) {
 	if _, err := t.Bot.Send(msg); err != nil {
 		log.Printf("Error sending info message: %v", err)
 	}
+}
+
+func (t *TelegramBot) handleVideoAsFileDownload(chatID int64, url string) {
+	processingMsg := tgbotapi.NewMessage(chatID, "🔄 Processing your request...")
+	if _, err := t.Bot.Send(processingMsg); err != nil {
+		log.Printf("Error sending processing message: %v", err)
+	}
+
+	videoInfo, err := t.VideoDownloader.GetVideoInfo(url)
+	if err != nil {
+		errorMsg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error getting video info: %v", err))
+		if _, err := t.Bot.Send(errorMsg); err != nil {
+			log.Printf("Error sending error message: %v", err)
+		}
+		return
+	}
+
+	infoText := fmt.Sprintf("📁 Downloading video as file...\n\nFilename: %s\nSize: %s\nType: %s",
+		videoInfo.Filename, videoInfo.FormatSize(), videoInfo.ContentType)
+
+	infoMsg := tgbotapi.NewMessage(chatID, infoText)
+	if _, err := t.Bot.Send(infoMsg); err != nil {
+		log.Printf("Error sending info message: %v", err)
+	}
+
+	filePath, updatedVideoInfo, err := t.VideoDownloader.DownloadVideo(url)
+	if err != nil {
+		errorMsg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error downloading video: %v", err))
+		if _, err := t.Bot.Send(errorMsg); err != nil {
+			log.Printf("Error sending error message: %v", err)
+		}
+		return
+	}
+
+	// Upload the video as a file document to Telegram
+	t.uploadFileToTelegram(chatID, filePath, updatedVideoInfo)
 }
 
 func (t *TelegramBot) uploadVideoToTelegram(chatID int64, filePath string, videoInfo *videoinfo.VideoInfo) {
@@ -200,7 +236,7 @@ func (t *TelegramBot) uploadVideoToTelegram(chatID int64, filePath string, video
 	} else {
 		log.Printf("⚠️ No duration metadata available")
 	}
-	
+
 	if videoInfo.Width > 0 && videoInfo.Height > 0 {
 		log.Printf("✅ Video dimensions extracted: %dx%d", videoInfo.Width, videoInfo.Height)
 	} else {
@@ -238,6 +274,91 @@ func (t *TelegramBot) uploadVideoToTelegram(chatID int64, filePath string, video
 	}
 
 	log.Printf("Video uploaded successfully to Telegram: %s", filePath)
+
+	// Only delete file if upload was successful
+	if err := os.Remove(filePath); err != nil {
+		log.Printf("Warning: Could not delete local file %s: %v", filePath, err)
+	} else {
+		log.Printf("Local file deleted: %s", filePath)
+	}
+}
+
+func (t *TelegramBot) uploadFileToTelegram(chatID int64, filePath string, videoInfo *videoinfo.VideoInfo) {
+	// Check if we're using local TDLib server for enhanced limits
+	isLocalServer := os.Getenv("TELEGRAM_API_URL") != ""
+
+	var maxFileSize int64
+	var fileSizeLimit string
+
+	if isLocalServer {
+		maxFileSize = 2000 * 1024 * 1024 // 2000MB for TDLib local server
+		fileSizeLimit = "2000MB"
+	} else {
+		maxFileSize = 50 * 1024 * 1024 // 50MB for official API
+		fileSizeLimit = "50MB"
+	}
+
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		log.Printf("Error getting file info: %v", err)
+		errorMsg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error accessing downloaded file: %v", err))
+		if _, err := t.Bot.Send(errorMsg); err != nil {
+			log.Printf("Error sending file access error message: %v", err)
+		}
+		return
+	}
+
+	fileSize := fileInfo.Size()
+	if fileSize > maxFileSize {
+		log.Printf("File too large for Telegram upload: %d bytes (max: %d bytes)", fileSize, maxFileSize)
+
+		errorMsg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ File too large for Telegram upload!\n\n📊 File size: %s\n📏 Current limit: %s\n\n📁 Video saved locally to: %s\n\n💡 Tip: Use TDLib local server for 2000MB limit!",
+			videoInfo.FormatSize(), fileSizeLimit, filePath))
+		if _, err := t.Bot.Send(errorMsg); err != nil {
+			log.Printf("Error sending file size error message: %v", err)
+		}
+		return
+	}
+
+	uploadingMsg := tgbotapi.NewMessage(chatID, "📤 Uploading file to Telegram...")
+	if _, err := t.Bot.Send(uploadingMsg); err != nil {
+		log.Printf("Error sending uploading message: %v", err)
+	}
+
+	// Create document upload instead of video
+	document := tgbotapi.NewDocument(chatID, tgbotapi.FilePath(filePath))
+
+	if isLocalServer {
+		log.Printf("Using TDLib local server for file: %s", filePath)
+	} else {
+		log.Printf("Using official API for file: %s", filePath)
+	}
+
+	caption := fmt.Sprintf("✅ File uploaded successfully!\n\n📁 Filename: %s\n💾 Size: %s\n🔧 API: %s",
+		videoInfo.Filename, videoInfo.FormatSize(),
+		map[bool]string{true: "TDLib Local", false: "Official"}[isLocalServer])
+
+	// Add metadata to caption if available
+	if videoInfo.Duration > 0 {
+		caption += fmt.Sprintf("\n⏱️ Duration: %d seconds", videoInfo.Duration)
+	}
+	if videoInfo.Width > 0 && videoInfo.Height > 0 {
+		caption += fmt.Sprintf("\n📐 Resolution: %dx%d", videoInfo.Width, videoInfo.Height)
+	}
+	document.Caption = caption
+
+	_, err = t.Bot.Send(document)
+	if err != nil {
+		log.Printf("Error uploading file: %v", err)
+
+		errorMsg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error uploading file: %v\n\n📁 File saved locally to: %s", err, filePath))
+		if _, err := t.Bot.Send(errorMsg); err != nil {
+			log.Printf("Error sending upload error message: %v", err)
+		}
+		return
+	}
+
+	log.Printf("File uploaded successfully to Telegram: %s", filePath)
 
 	// Only delete file if upload was successful
 	if err := os.Remove(filePath); err != nil {

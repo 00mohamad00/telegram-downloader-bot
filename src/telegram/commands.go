@@ -38,10 +38,12 @@ func getHelpText() string {
 /start - Start the bot
 /help - Show this help message
 /info <url> - Get video information without downloading
+/file <url> - Download and upload video as file document
 /status - Show current API status and limits
 
 📝 Usage:
-• Send a direct video URL to download
+• Send a direct video URL to download as video
+• Use /file <url> to download and upload as file document
 • Supported formats: MP4, WebM, AVI, MOV, WMV, FLV, MKV
 • Files are saved to the downloads directory
 
@@ -87,6 +89,18 @@ func (t *TelegramBot) handleCommand(message *tgbotapi.Message) {
 
 		url := parts[1]
 		t.handleVideoInfo(chatID, url)
+
+	case "/file":
+		if len(parts) < 2 {
+			msg := tgbotapi.NewMessage(chatID, "Please provide a URL. Usage: /file <url>")
+			if _, err := t.Bot.Send(msg); err != nil {
+				log.Printf("Error sending message: %v", err)
+			}
+			return
+		}
+
+		url := parts[1]
+		t.handleVideoAsFileDownload(chatID, url)
 
 	default:
 		msg := tgbotapi.NewMessage(chatID, unknownCommandText)
